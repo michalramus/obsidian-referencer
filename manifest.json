@@ -1,0 +1,10 @@
+{
+  "id": "obsidian-referencer",
+  "name": "Referencer",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Folder panel and backlink panel for quick link insertion.",
+  "author": "michal",
+  "authorUrl": "",
+  "isDesktopOnly": false
+}
