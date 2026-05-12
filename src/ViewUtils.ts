@@ -20,6 +20,7 @@ export function renderNoteList(
   for (const file of files) {
     const li = ul.createEl("li", { cls: "referencer-item" });
     li.setText(file.basename);
+    li.addEventListener("mousedown", (e) => e.preventDefault());
     li.addEventListener("click", () => insertWikilink(app, file.basename));
   }
 }
@@ -46,6 +47,7 @@ export function renderGroupedNoteList(
     for (const file of notes) {
       const li = ul.createEl("li", { cls: "referencer-item" });
       li.setText(file.basename);
+      li.addEventListener("mousedown", (e) => e.preventDefault());
       li.addEventListener("click", () => insertWikilink(app, file.basename));
     }
   }
