@@ -1,6 +1,6 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import type ReferencerPlugin from "./main";
-import { renderGroupedNoteList } from "./ViewUtils";
+import { renderGroupedNoteList, stripLeadingEmoji } from "./ViewUtils";
 
 export const BACKLINK_VIEW_TYPE = "referencer-backlink-view";
 
@@ -55,13 +55,16 @@ export class BacklinkView extends ItemView {
     const cache = this.app.metadataCache.getFileCache(activeFile);
     const outLinks = cache?.links ?? [];
 
+    const filterByFolder = this.plugin.settings.filterBacklinksByFolder;
     const bridgeFiles: TFile[] = [];
+    const seenBridges = new Set<string>();
     for (const linkCache of outLinks) {
       const resolved = this.app.metadataCache.getFirstLinkpathDest(
         linkCache.link,
         activeFile.path
       );
-      if (resolved && resolved.path.startsWith(folderNorm)) {
+      if (resolved && !seenBridges.has(resolved.path) && (!filterByFolder || resolved.path.startsWith(folderNorm))) {
+        seenBridges.add(resolved.path);
         bridgeFiles.push(resolved);
       }
     }
@@ -75,6 +78,7 @@ export class BacklinkView extends ItemView {
     }
 
     const groups = new Map<TFile, TFile[]>();
+    const seenNotes = new Set<string>();
 
     for (const bridge of bridgeFiles) {
       const backlinks = this.app.metadataCache.getBacklinksForFile(
@@ -84,18 +88,20 @@ export class BacklinkView extends ItemView {
       const notes: TFile[] = [];
       for (const sourcePath of backlinks.keys()) {
         if (sourcePath === activeFile.path) continue;
+        if (seenNotes.has(sourcePath)) continue;
         const sourceFile = this.app.vault.getFileByPath(sourcePath);
         if (sourceFile) {
+          seenNotes.add(sourcePath);
           notes.push(sourceFile);
         }
       }
 
-      notes.sort((a, b) => a.basename.localeCompare(b.basename));
+      notes.sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)));
       if (notes.length > 0) {
         groups.set(bridge, notes);
       }
     }
 
-    renderGroupedNoteList(container, groups, this.app);
+    renderGroupedNoteList(container, groups, this.plugin);
   }
 }

@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { MarkdownView, Plugin } from "obsidian";
 import { DEFAULT_SETTINGS, ReferencerSettings } from "./types";
 import { ReferencerSettingTab } from "./settings";
 import { FolderView, FOLDER_VIEW_TYPE } from "./FolderView";
@@ -6,6 +6,7 @@ import { BacklinkView, BACKLINK_VIEW_TYPE } from "./BacklinkView";
 
 export default class ReferencerPlugin extends Plugin {
   settings: ReferencerSettings;
+  lastMarkdownView: MarkdownView | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
@@ -26,7 +27,47 @@ export default class ReferencerPlugin extends Plugin {
     );
 
     this.registerEvent(
+      this.app.workspace.on("active-leaf-change", (leaf) => {
+        const view = leaf?.view;
+        if (view instanceof MarkdownView) {
+          this.lastMarkdownView = view;
+        }
+      })
+    );
+
+    this.registerEvent(
       this.app.workspace.on("file-open", () => this.refreshBacklinkView())
+    );
+
+    this.registerEvent(
+      this.app.metadataCache.on("changed", (file) => {
+        if (file === this.app.workspace.getActiveFile()) {
+          this.refreshBacklinkView();
+        }
+      })
+    );
+
+    const folderNorm = () => {
+      const p = this.settings.folderPath.trim();
+      return p.endsWith("/") ? p : p + "/";
+    };
+
+    this.registerEvent(
+      this.app.vault.on("create", (file) => {
+        if (file.path.startsWith(folderNorm())) this.refreshFolderView();
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("delete", (file) => {
+        if (file.path.startsWith(folderNorm())) this.refreshFolderView();
+      })
+    );
+    this.registerEvent(
+      this.app.vault.on("rename", (file, oldPath) => {
+        const norm = folderNorm();
+        if (file.path.startsWith(norm) || oldPath.startsWith(norm))
+          this.refreshFolderView();
+      })
     );
 
     this.app.workspace.onLayoutReady(() => {
@@ -72,20 +113,20 @@ export default class ReferencerPlugin extends Plugin {
     this.app.workspace.revealLeaf(leaf);
   }
 
+  refreshFolderView(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(FOLDER_VIEW_TYPE)) {
+      if (leaf.view instanceof FolderView) leaf.view.refresh();
+    }
+  }
+
   refreshBacklinkView(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(BACKLINK_VIEW_TYPE)) {
-      if (leaf.view instanceof BacklinkView) {
-        leaf.view.refresh();
-      }
+      if (leaf.view instanceof BacklinkView) leaf.view.refresh();
     }
   }
 
   refreshAllViews(): void {
-    for (const leaf of this.app.workspace.getLeavesOfType(FOLDER_VIEW_TYPE)) {
-      if (leaf.view instanceof FolderView) {
-        leaf.view.refresh();
-      }
-    }
+    this.refreshFolderView();
     this.refreshBacklinkView();
   }
 }
