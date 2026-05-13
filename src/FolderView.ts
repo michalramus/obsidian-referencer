@@ -64,6 +64,8 @@ export class FolderView extends ItemView {
       this.captureInitialOrderIfNeeded(rootFiles, subfolderMap);
     }
 
+    container.empty();
+
     if (subfolderMap.size > 0) {
       const toolbar = container.createEl("div", { cls: "referencer-toolbar" });
       const btn = toolbar.createEl("button", {
@@ -72,7 +74,7 @@ export class FolderView extends ItemView {
       });
       setIcon(btn, "chevrons-down-up");
       btn.addEventListener("click", () => {
-        const groups = container.querySelectorAll<HTMLDetailsElement>("details.referencer-group");
+        const groups = listEl.querySelectorAll<HTMLDetailsElement>("details.referencer-group");
         const anyOpen = [...groups].some((d) => d.open);
         const collapsed = this.plugin.settings.collapsedFolders;
         if (anyOpen) {
@@ -93,7 +95,8 @@ export class FolderView extends ItemView {
       });
     }
 
-    renderSubfolderGroupedList(container, rootFiles, subfolderMap, this.plugin);
+    const listEl = container.createEl("div");
+    renderSubfolderGroupedList(listEl, rootFiles, subfolderMap, this.plugin);
   }
 
   private captureInitialOrderIfNeeded(
