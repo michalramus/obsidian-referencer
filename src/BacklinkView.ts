@@ -112,6 +112,19 @@ export class BacklinkView extends ItemView {
       }
     }
 
-    renderGroupedNoteList(container, groups, this.plugin);
+    // Build noteToBridges for topical sort
+    const allPanelNotes = [...new Set([...assignment.values()].map(a => a.file))];
+    const noteToBridges = new Map<string, Set<string>>();
+    for (const note of allPanelNotes) {
+      const noteCache = this.app.metadataCache.getFileCache(note);
+      const bridges = new Set<string>();
+      for (const lc of noteCache?.links ?? []) {
+        const resolved = this.app.metadataCache.getFirstLinkpathDest(lc.link, note.path);
+        if (resolved && bridgeFiles.some(b => b.path === resolved.path)) bridges.add(resolved.path);
+      }
+      noteToBridges.set(note.path, bridges);
+    }
+
+    renderGroupedNoteList(container, groups, this.plugin, noteToBridges, bridgeFiles);
   }
 }

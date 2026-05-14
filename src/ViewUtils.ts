@@ -355,10 +355,42 @@ export function renderFolderTree(
   if (needsSave) plugin.saveSettings();
 }
 
+function alphaSorted(notes: TFile[]): TFile[] {
+  return [...notes].sort((a, b) =>
+    stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename))
+  );
+}
+
+export function hierarchicalSort(
+  notes: TFile[],
+  noteToBridges: Map<string, Set<string>>,
+  availableBridges: TFile[]
+): TFile[] {
+  if (notes.length <= 1 || availableBridges.length === 0) return alphaSorted(notes);
+  const freq = new Map(availableBridges.map(b => [b.path,
+    notes.filter(n => noteToBridges.get(n.path)?.has(b.path)).length
+  ]));
+  const maxFreq = Math.max(...freq.values());
+  if (maxFreq <= 1) return alphaSorted(notes);
+  const topBridge = availableBridges.reduce((a, b) =>
+    freq.get(b.path)! > freq.get(a.path)! ? b : a
+  );
+  const withBridge = notes.filter(n => noteToBridges.get(n.path)?.has(topBridge.path));
+  const withoutBridge = notes.filter(n => !noteToBridges.get(n.path)?.has(topBridge.path));
+  const remaining = availableBridges.filter(b => b.path !== topBridge.path);
+  if (maxFreq <= 2) return [...alphaSorted(withBridge), ...alphaSorted(withoutBridge)];
+  return [
+    ...hierarchicalSort(withBridge, noteToBridges, remaining),
+    ...hierarchicalSort(withoutBridge, noteToBridges, remaining),
+  ];
+}
+
 export function renderGroupedNoteList(
   container: HTMLElement,
   groups: Map<TFile, TFile[]>,
-  plugin: ReferencerPlugin
+  plugin: ReferencerPlugin,
+  noteToBridges: Map<string, Set<string>> = new Map(),
+  bridgeFiles: TFile[] = []
 ): void {
   container.empty();
   if (groups.size === 0) {
@@ -366,6 +398,11 @@ export function renderGroupedNoteList(
     return;
   }
   for (const [bridge, notes] of groups) {
+    const sortedNotes = hierarchicalSort(
+      notes,
+      noteToBridges,
+      bridgeFiles.filter(b => b.path !== bridge.path)
+    );
     const details = container.createEl("details", { cls: "referencer-group" });
     const key = bridge.path;
     const isCollapsed = plugin.settings.collapsedGroups.includes(key);
@@ -381,9 +418,9 @@ export function renderGroupedNoteList(
       plugin.saveSettings();
     });
     const summary = details.createEl("summary", { cls: "referencer-group-header" });
-    summary.setText(`${bridge.basename} (${notes.length})`);
+    summary.setText(`${bridge.basename} (${sortedNotes.length})`);
     const ul = details.createEl("ul", { cls: "referencer-list" });
-    for (const file of notes) {
+    for (const file of sortedNotes) {
       const li = ul.createEl("li", { cls: "referencer-item" });
       li.setText(file.basename);
       li.addEventListener("click", () => insertWikilink(plugin, file.basename));
