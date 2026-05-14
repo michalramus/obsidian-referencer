@@ -77,28 +77,38 @@ export class BacklinkView extends ItemView {
       return;
     }
 
-    const groups = new Map<TFile, TFile[]>();
-    const seenNotes = new Set<string>();
-
+    // Pass 1: assign each sourcePath to best bridge (prefer outside-folder notes)
+    const assignment = new Map<string, { file: TFile; bridge: TFile; inFolder: boolean }>();
     for (const bridge of bridgeFiles) {
       const backlinks = this.app.metadataCache.getBacklinksForFile(
         bridge
       ) as unknown as CustomArrayDict;
-
-      const notes: TFile[] = [];
       for (const sourcePath of backlinks.keys()) {
         if (sourcePath === activeFile.path) continue;
-        if (seenNotes.has(sourcePath)) continue;
         const sourceFile = this.app.vault.getFileByPath(sourcePath);
-        if (sourceFile) {
-          seenNotes.add(sourcePath);
-          notes.push(sourceFile);
+        if (!sourceFile) continue;
+        const inFolder = sourceFile.path.startsWith(folderNorm);
+        const existing = assignment.get(sourcePath);
+        if (!existing || (existing.inFolder && !inFolder)) {
+          assignment.set(sourcePath, { file: sourceFile, bridge, inFolder });
         }
       }
+    }
 
-      notes.sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)));
-      if (notes.length > 0) {
-        groups.set(bridge, notes);
+    // Pass 2: rebuild groups from assignments, preserve bridge order
+    const groups = new Map<TFile, TFile[]>();
+    for (const bridge of bridgeFiles) {
+      groups.set(bridge, []);
+    }
+    for (const { file, bridge } of assignment.values()) {
+      groups.get(bridge)!.push(file);
+    }
+    // Sort each group and drop empty bridges
+    for (const [bridge, notes] of groups) {
+      if (notes.length === 0) {
+        groups.delete(bridge);
+      } else {
+        notes.sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)));
       }
     }
 
