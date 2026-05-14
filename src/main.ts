@@ -1,4 +1,4 @@
-import { MarkdownView, Plugin } from "obsidian";
+import { MarkdownView, Plugin, TFolder } from "obsidian";
 import { DEFAULT_SETTINGS, ReferencerSettings } from "./types";
 import { ReferencerSettingTab } from "./settings";
 import { FolderView, FOLDER_VIEW_TYPE } from "./FolderView";
@@ -59,14 +59,102 @@ export default class ReferencerPlugin extends Plugin {
     );
     this.registerEvent(
       this.app.vault.on("delete", (file) => {
-        if (file.path.startsWith(folderNorm())) this.refreshFolderView();
+        const norm = folderNorm();
+        if (!file.path.startsWith(norm)) return;
+        const rel = file.path.slice(norm.length);
+        const parts = rel.split("/");
+        const basename = parts[parts.length - 1].replace(/\.md$/, "");
+        const subKey = parts.slice(0, parts.length - 1).join("/");
+        const order = this.settings.manualFileOrder[subKey];
+        if (order) {
+          const idx = order.indexOf(basename);
+          if (idx !== -1) {
+            order.splice(idx, 1);
+            this.settings.manualFileOrder[subKey] = order;
+          }
+        }
+        this.saveSettings().then(() => this.refreshFolderView());
       })
     );
     this.registerEvent(
       this.app.vault.on("rename", (file, oldPath) => {
         const norm = folderNorm();
-        if (file.path.startsWith(norm) || oldPath.startsWith(norm))
-          this.refreshFolderView();
+        const wasInFolder = oldPath.startsWith(norm);
+        const isInFolder = file.path.startsWith(norm);
+        if (!wasInFolder && !isInFolder) return;
+
+        if (file instanceof TFolder) {
+          // Folder rename/move
+          const oldSegKey = oldPath.slice(norm.length);
+          const newSegKey = file.path.slice(norm.length);
+
+          // Update manualFileOrder keys
+          for (const key of Object.keys(this.settings.manualFileOrder)) {
+            if (key === oldSegKey || key.startsWith(oldSegKey + "/")) {
+              const newKey = newSegKey + key.slice(oldSegKey.length);
+              this.settings.manualFileOrder[newKey] = this.settings.manualFileOrder[key];
+              delete this.settings.manualFileOrder[key];
+            }
+          }
+
+          // Update collapsedFolders entries
+          const collapsed = this.settings.collapsedFolders;
+          for (let i = 0; i < collapsed.length; i++) {
+            if (collapsed[i] === oldSegKey || collapsed[i].startsWith(oldSegKey + "/")) {
+              collapsed[i] = newSegKey + collapsed[i].slice(oldSegKey.length);
+            }
+          }
+
+          // Update manualFolderOrder top-level entry
+          const oldTop = oldSegKey.split("/")[0];
+          const newTop = newSegKey.split("/")[0];
+          const folderOrderIdx = this.settings.manualFolderOrder.indexOf(oldTop);
+          if (folderOrderIdx !== -1) {
+            this.settings.manualFolderOrder[folderOrderIdx] = newTop;
+          }
+
+          // Update manualSubfolderOrder keys
+          const subfolderOrder = this.settings.manualSubfolderOrder ?? {};
+          for (const key of Object.keys(subfolderOrder)) {
+            if (key === oldSegKey || key.startsWith(oldSegKey + "/")) {
+              const newKey = newSegKey + key.slice(oldSegKey.length);
+              subfolderOrder[newKey] = subfolderOrder[key];
+              delete subfolderOrder[key];
+            }
+          }
+          // Also update values that contain the old segment key
+          for (const key of Object.keys(subfolderOrder)) {
+            subfolderOrder[key] = subfolderOrder[key].map((seg: string) =>
+              seg === oldSegKey ? newSegKey : seg
+            );
+          }
+          this.settings.manualSubfolderOrder = subfolderOrder;
+        } else {
+          // File rename/move
+          if (wasInFolder) {
+            const oldRel = oldPath.slice(norm.length);
+            const oldParts = oldRel.split("/");
+            const oldBasename = oldParts[oldParts.length - 1].replace(/\.md$/, "");
+            const oldSubKey = oldParts.slice(0, oldParts.length - 1).join("/");
+            const oldOrder = this.settings.manualFileOrder[oldSubKey];
+            if (oldOrder) {
+              const idx = oldOrder.indexOf(oldBasename);
+              if (idx !== -1) oldOrder.splice(idx, 1);
+              this.settings.manualFileOrder[oldSubKey] = oldOrder;
+            }
+          }
+          if (isInFolder) {
+            const newRel = file.path.slice(norm.length);
+            const newParts = newRel.split("/");
+            const newBasename = newParts[newParts.length - 1].replace(/\.md$/, "");
+            const newSubKey = newParts.slice(0, newParts.length - 1).join("/");
+            const newOrder = this.settings.manualFileOrder[newSubKey] ?? [];
+            if (!newOrder.includes(newBasename)) newOrder.push(newBasename);
+            this.settings.manualFileOrder[newSubKey] = newOrder;
+          }
+        }
+
+        this.saveSettings().then(() => this.refreshFolderView());
       })
     );
 

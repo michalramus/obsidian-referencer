@@ -6,6 +6,7 @@ export interface ReferencerSettings {
   alphabeticOrder: boolean;
   manualFolderOrder: string[];
   manualFileOrder: Record<string, string[]>;
+  manualSubfolderOrder: Record<string, string[]>;
 }
 
 export const DEFAULT_SETTINGS: ReferencerSettings = {
@@ -16,4 +17,5 @@ export const DEFAULT_SETTINGS: ReferencerSettings = {
   alphabeticOrder: true,
   manualFolderOrder: [],
   manualFileOrder: {},
+  manualSubfolderOrder: {},
 };
