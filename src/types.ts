@@ -1,3 +1,11 @@
+import type { TFile } from "obsidian";
+
+export interface BridgeInfo {
+  path: string;
+  basename: string;
+  file: TFile | null;
+}
+
 export interface ReferencerSettings {
   folderPath: string;
   filterBacklinksByFolder: boolean;

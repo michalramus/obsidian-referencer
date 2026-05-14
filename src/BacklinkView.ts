@@ -1,5 +1,6 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import type ReferencerPlugin from "./main";
+import type { BridgeInfo } from "./types";
 import { renderGroupedNoteList } from "./ViewUtils";
 
 export const BACKLINK_VIEW_TYPE = "referencer-backlink-view";
@@ -56,16 +57,24 @@ export class BacklinkView extends ItemView {
     const outLinks = cache?.links ?? [];
 
     const filterByFolder = this.plugin.settings.filterBacklinksByFolder;
-    const bridgeFiles: TFile[] = [];
+    const bridgeFiles: BridgeInfo[] = [];
     const seenBridges = new Set<string>();
     for (const linkCache of outLinks) {
       const resolved = this.app.metadataCache.getFirstLinkpathDest(
         linkCache.link,
         activeFile.path
       );
-      if (resolved && !seenBridges.has(resolved.path) && (!filterByFolder || resolved.path.startsWith(folderNorm))) {
-        seenBridges.add(resolved.path);
-        bridgeFiles.push(resolved);
+      if (resolved) {
+        if (!seenBridges.has(resolved.path) && (!filterByFolder || resolved.path.startsWith(folderNorm))) {
+          seenBridges.add(resolved.path);
+          bridgeFiles.push({ path: resolved.path, basename: resolved.basename, file: resolved });
+        }
+      } else if (!filterByFolder) {
+        const synPath = `[[${linkCache.link}]]`;
+        if (!seenBridges.has(synPath)) {
+          seenBridges.add(synPath);
+          bridgeFiles.push({ path: synPath, basename: linkCache.link, file: null });
+        }
       }
     }
 
@@ -78,12 +87,20 @@ export class BacklinkView extends ItemView {
     }
 
     // Pass 1: assign each sourcePath to best bridge (prefer outside-folder notes)
-    const assignment = new Map<string, { file: TFile; bridge: TFile; inFolder: boolean }>();
+    const assignment = new Map<string, { file: TFile; bridge: BridgeInfo; inFolder: boolean }>();
     for (const bridge of bridgeFiles) {
-      const backlinks = this.app.metadataCache.getBacklinksForFile(
-        bridge
-      ) as unknown as CustomArrayDict;
-      for (const sourcePath of backlinks.keys()) {
+      let sourcePaths: string[];
+      if (bridge.file !== null) {
+        const backlinks = this.app.metadataCache.getBacklinksForFile(
+          bridge.file
+        ) as unknown as CustomArrayDict;
+        sourcePaths = backlinks.keys();
+      } else {
+        sourcePaths = Object.entries(this.app.metadataCache.unresolvedLinks)
+          .filter(([, links]) => links[bridge.basename])
+          .map(([sp]) => sp);
+      }
+      for (const sourcePath of sourcePaths) {
         if (sourcePath === activeFile.path) continue;
         const sourceFile = this.app.vault.getFileByPath(sourcePath);
         if (!sourceFile) continue;
@@ -96,7 +113,7 @@ export class BacklinkView extends ItemView {
     }
 
     // Pass 2: rebuild groups from assignments, preserve bridge order
-    const groups = new Map<TFile, TFile[]>();
+    const groups = new Map<BridgeInfo, TFile[]>();
     for (const bridge of bridgeFiles) {
       groups.set(bridge, []);
     }
@@ -112,11 +129,16 @@ export class BacklinkView extends ItemView {
     const allPanelNotes = [...new Set([...assignment.values()].map(a => a.file))];
     const noteToBridges = new Map<string, Set<string>>();
     for (const note of allPanelNotes) {
-      const noteCache = this.app.metadataCache.getFileCache(note);
       const bridges = new Set<string>();
+      const noteCache = this.app.metadataCache.getFileCache(note);
       for (const lc of noteCache?.links ?? []) {
         const resolved = this.app.metadataCache.getFirstLinkpathDest(lc.link, note.path);
         if (resolved && bridgeFiles.some(b => b.path === resolved.path)) bridges.add(resolved.path);
+      }
+      const noteUnresolved = this.app.metadataCache.unresolvedLinks[note.path] ?? {};
+      for (const linkText of Object.keys(noteUnresolved)) {
+        const synPath = `[[${linkText}]]`;
+        if (bridgeFiles.some(b => b.path === synPath)) bridges.add(synPath);
       }
       noteToBridges.set(note.path, bridges);
     }

@@ -1,5 +1,6 @@
 import { MarkdownView, Menu, TFile } from "obsidian";
 import type ReferencerPlugin from "./main";
+import type { BridgeInfo } from "./types";
 
 export function stripLeadingEmoji(s: string): string {
   return s.replace(/^([\p{Emoji_Presentation}\p{Extended_Pictographic}]\s*)+/u, "");
@@ -387,7 +388,7 @@ function alphaSorted(notes: TFile[]): TFile[] {
 export function hierarchicalSort(
   notes: TFile[],
   noteToBridges: Map<string, Set<string>>,
-  availableBridges: TFile[]
+  availableBridges: BridgeInfo[]
 ): TFile[] {
   if (notes.length <= 1 || availableBridges.length === 0) return alphaSorted(notes);
   const freq = new Map(availableBridges.map(b => [b.path,
@@ -410,10 +411,10 @@ export function hierarchicalSort(
 
 export function renderGroupedNoteList(
   container: HTMLElement,
-  groups: Map<TFile, TFile[]>,
+  groups: Map<BridgeInfo, TFile[]>,
   plugin: ReferencerPlugin,
   noteToBridges: Map<string, Set<string>> = new Map(),
-  bridgeFiles: TFile[] = []
+  bridgeFiles: BridgeInfo[] = []
 ): void {
   container.empty();
   if (groups.size === 0) {
