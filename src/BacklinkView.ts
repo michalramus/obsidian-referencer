@@ -86,10 +86,9 @@ export class BacklinkView extends ItemView {
       return;
     }
 
-    // Pass 1: assign each sourcePath to best bridge (prefer outside-folder bridges)
-    const assignment = new Map<string, { file: TFile; bridge: BridgeInfo; bridgeInFolder: boolean }>();
+    // Pass 1a: collect all bridge memberships per source (order-independent)
+    const sourceToBridges = new Map<string, { file: TFile; bridges: BridgeInfo[] }>();
     for (const bridge of bridgeFiles) {
-      const bridgeInFolder = bridge.file?.path.startsWith(folderNorm) ?? false;
       let sourcePaths: string[];
       if (bridge.file !== null) {
         const backlinks = this.app.metadataCache.getBacklinksForFile(
@@ -105,11 +104,22 @@ export class BacklinkView extends ItemView {
         if (sourcePath === activeFile.path) continue;
         const sourceFile = this.app.vault.getFileByPath(sourcePath);
         if (!sourceFile) continue;
-        const existing = assignment.get(sourcePath);
-        if (!existing || (existing.bridgeInFolder && !bridgeInFolder)) {
-          assignment.set(sourcePath, { file: sourceFile, bridge, bridgeInFolder });
+        if (!sourceToBridges.has(sourcePath)) {
+          sourceToBridges.set(sourcePath, { file: sourceFile, bridges: [] });
         }
+        sourceToBridges.get(sourcePath)!.bridges.push(bridge);
       }
+    }
+
+    // Pass 1b: assign each source to best bridge (prefer outside-folder, then earliest in note)
+    const assignment = new Map<string, { file: TFile; bridge: BridgeInfo }>();
+    for (const [sourcePath, { file, bridges }] of sourceToBridges) {
+      const outsideBridges = bridges.filter(b => !(b.file?.path.startsWith(folderNorm) ?? false));
+      const candidates = outsideBridges.length > 0 ? outsideBridges : bridges;
+      const bestBridge = candidates.reduce((best, b) =>
+        bridgeFiles.indexOf(b) < bridgeFiles.indexOf(best) ? b : best
+      );
+      assignment.set(sourcePath, { file, bridge: bestBridge });
     }
 
     // Pass 2: rebuild groups from assignments, preserve bridge order
