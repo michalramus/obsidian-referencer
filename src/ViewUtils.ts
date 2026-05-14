@@ -1,4 +1,4 @@
-import { MarkdownView, TFile } from "obsidian";
+import { MarkdownView, Menu, TFile } from "obsidian";
 import type ReferencerPlugin from "./main";
 
 export function stripLeadingEmoji(s: string): string {
@@ -126,6 +126,24 @@ function createFileItem(
     insertWikilink(plugin, file.basename);
   });
 
+  li.addEventListener("mouseover", (e) => {
+    plugin.app.workspace.trigger("hover-link", {
+      event: e, source: "referencer",
+      hoverParent: li, targetEl: li,
+      linktext: file.basename, sourcePath: file.path,
+    });
+  });
+
+  li.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    const menu = new Menu();
+    menu.addItem(item =>
+      item.setTitle("Open in new tab").setIcon("lucide-external-link")
+        .onClick(() => plugin.app.workspace.getLeaf("tab").openFile(file))
+    );
+    menu.showAtMouseEvent(e);
+  });
+
   return li;
 }
 
@@ -144,6 +162,22 @@ export function renderNoteList(
     const li = ul.createEl("li", { cls: "referencer-item" });
     li.setText(file.basename);
     li.addEventListener("click", () => insertWikilink(plugin, file.basename));
+    li.addEventListener("mouseover", (e) => {
+      plugin.app.workspace.trigger("hover-link", {
+        event: e, source: "referencer",
+        hoverParent: li, targetEl: li,
+        linktext: file.basename, sourcePath: file.path,
+      });
+    });
+    li.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      const menu = new Menu();
+      menu.addItem(item =>
+        item.setTitle("Open in new tab").setIcon("lucide-external-link")
+          .onClick(() => plugin.app.workspace.getLeaf("tab").openFile(file))
+      );
+      menu.showAtMouseEvent(e);
+    });
   }
 }
 
@@ -343,6 +377,22 @@ export function renderGroupedNoteList(
       const li = ul.createEl("li", { cls: "referencer-item" });
       li.setText(file.basename);
       li.addEventListener("click", () => insertWikilink(plugin, file.basename));
+      li.addEventListener("mouseover", (e) => {
+        plugin.app.workspace.trigger("hover-link", {
+          event: e, source: "referencer",
+          hoverParent: li, targetEl: li,
+          linktext: file.basename, sourcePath: file.path,
+        });
+      });
+      li.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        const menu = new Menu();
+        menu.addItem(item =>
+          item.setTitle("Open in new tab").setIcon("lucide-external-link")
+            .onClick(() => plugin.app.workspace.getLeaf("tab").openFile(file))
+        );
+        menu.showAtMouseEvent(e);
+      });
     }
   }
 }
