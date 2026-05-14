@@ -131,12 +131,24 @@ function createFileItem(
     insertWikilink(plugin, file.basename);
   });
 
-  li.addEventListener("mouseover", (e) => {
-    plugin.app.workspace.trigger("hover-link", {
-      event: e, source: "referencer",
-      hoverParent: plugin, targetEl: li,
-      linktext: file.basename, sourcePath: file.path,
-    });
+  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastEvent: MouseEvent | null = null;
+
+  li.addEventListener("mouseenter", (e) => {
+    lastEvent = e;
+    hoverTimer = setTimeout(() => {
+      plugin.app.workspace.trigger("hover-link", {
+        event: lastEvent!, source: "referencer",
+        hoverParent: plugin, targetEl: li,
+        linktext: file.basename, sourcePath: file.path,
+      });
+    }, 2000);
+  });
+
+  li.addEventListener("mousemove", (e) => { lastEvent = e; });
+
+  li.addEventListener("mouseleave", () => {
+    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
   });
 
   li.addEventListener("contextmenu", (e) => {
@@ -167,13 +179,24 @@ export function renderNoteList(
     const li = ul.createEl("li", { cls: "referencer-item" });
     li.setText(file.basename);
     li.addEventListener("click", () => insertWikilink(plugin, file.basename));
-    li.addEventListener("mouseover", (e) => {
-      plugin.app.workspace.trigger("hover-link", {
-        event: e, source: "referencer",
-        hoverParent: plugin, targetEl: li,
-        linktext: file.basename, sourcePath: file.path,
-      });
+
+    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+    let lastEvent: MouseEvent | null = null;
+    li.addEventListener("mouseenter", (e) => {
+      lastEvent = e;
+      hoverTimer = setTimeout(() => {
+        plugin.app.workspace.trigger("hover-link", {
+          event: lastEvent!, source: "referencer",
+          hoverParent: plugin, targetEl: li,
+          linktext: file.basename, sourcePath: file.path,
+        });
+      }, 2000);
     });
+    li.addEventListener("mousemove", (e) => { lastEvent = e; });
+    li.addEventListener("mouseleave", () => {
+      if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+    });
+
     li.addEventListener("contextmenu", (e) => {
       e.preventDefault();
       const menu = new Menu();
@@ -424,13 +447,24 @@ export function renderGroupedNoteList(
       const li = ul.createEl("li", { cls: "referencer-item" });
       li.setText(file.basename);
       li.addEventListener("click", () => insertWikilink(plugin, file.basename));
-      li.addEventListener("mouseover", (e) => {
-        plugin.app.workspace.trigger("hover-link", {
-          event: e, source: "referencer",
-          hoverParent: plugin, targetEl: li,
-          linktext: file.basename, sourcePath: file.path,
-        });
+
+      let hoverTimer: ReturnType<typeof setTimeout> | null = null;
+      let lastEvent: MouseEvent | null = null;
+      li.addEventListener("mouseenter", (e) => {
+        lastEvent = e;
+        hoverTimer = setTimeout(() => {
+          plugin.app.workspace.trigger("hover-link", {
+            event: lastEvent!, source: "referencer",
+            hoverParent: plugin, targetEl: li,
+            linktext: file.basename, sourcePath: file.path,
+          });
+        }, 2000);
       });
+      li.addEventListener("mousemove", (e) => { lastEvent = e; });
+      li.addEventListener("mouseleave", () => {
+        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
+      });
+
       li.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         const menu = new Menu();

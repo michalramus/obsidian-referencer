@@ -19,7 +19,7 @@ export default class ReferencerPlugin extends Plugin {
 
     this.addSettingTab(new ReferencerSettingTab(this.app, this));
 
-    this.registerHoverLinkSource("referencer", { display: "Referencer", defaultMod: true });
+    this.registerHoverLinkSource("referencer", { display: "Referencer", defaultMod: false });
 
     this.addRibbonIcon("folder", "Open References panel", () =>
       this.activateFolderView()
