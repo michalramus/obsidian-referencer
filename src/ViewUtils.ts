@@ -10,7 +10,7 @@ export function insertWikilink(plugin: ReferencerPlugin, title: string): void {
     plugin.lastMarkdownView ??
     plugin.app.workspace.getActiveViewOfType(MarkdownView);
   if (!view) return;
-  view.editor.replaceSelection(`[[${title}]]`);
+  view.editor.replaceSelection(`[[${title}]]\n`);
 }
 
 let dragState: {
@@ -168,12 +168,15 @@ export function renderSubfolderGroupedList(
       )
     : applyOrder([...groups.entries()], s.manualFolderOrder, ([k]) => k);
 
-  // Trim stale folder entries
+  // Sync folder order: trim stale entries and add new ones
   if (!s.alphabeticOrder) {
-    const existingKeys = new Set(groups.keys());
-    const trimmed = s.manualFolderOrder.filter((k) => existingKeys.has(k));
-    if (trimmed.length !== s.manualFolderOrder.length) {
-      s.manualFolderOrder = trimmed;
+    const currentKeys = orderedEntries.map(([k]) => k);
+    const synced = [
+      ...s.manualFolderOrder.filter((k) => currentKeys.includes(k)),
+      ...currentKeys.filter((k) => !s.manualFolderOrder.includes(k)),
+    ];
+    if (synced.join() !== s.manualFolderOrder.join()) {
+      s.manualFolderOrder = synced;
       needsSave = true;
     }
   }
