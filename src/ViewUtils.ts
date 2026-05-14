@@ -134,7 +134,7 @@ function createFileItem(
   li.addEventListener("mouseover", (e) => {
     plugin.app.workspace.trigger("hover-link", {
       event: e, source: "referencer",
-      hoverParent: li, targetEl: li,
+      hoverParent: plugin, targetEl: li,
       linktext: file.basename, sourcePath: file.path,
     });
   });
@@ -170,7 +170,7 @@ export function renderNoteList(
     li.addEventListener("mouseover", (e) => {
       plugin.app.workspace.trigger("hover-link", {
         event: e, source: "referencer",
-        hoverParent: li, targetEl: li,
+        hoverParent: plugin, targetEl: li,
         linktext: file.basename, sourcePath: file.path,
       });
     });
@@ -427,7 +427,7 @@ export function renderGroupedNoteList(
       li.addEventListener("mouseover", (e) => {
         plugin.app.workspace.trigger("hover-link", {
           event: e, source: "referencer",
-          hoverParent: li, targetEl: li,
+          hoverParent: plugin, targetEl: li,
           linktext: file.basename, sourcePath: file.path,
         });
       });
