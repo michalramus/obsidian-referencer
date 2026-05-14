@@ -1,6 +1,6 @@
 import { ItemView, TFile, WorkspaceLeaf } from "obsidian";
 import type ReferencerPlugin from "./main";
-import { renderGroupedNoteList, stripLeadingEmoji } from "./ViewUtils";
+import { renderGroupedNoteList } from "./ViewUtils";
 
 export const BACKLINK_VIEW_TYPE = "referencer-backlink-view";
 
@@ -103,13 +103,9 @@ export class BacklinkView extends ItemView {
     for (const { file, bridge } of assignment.values()) {
       groups.get(bridge)!.push(file);
     }
-    // Sort each group and drop empty bridges
+    // Drop empty bridges
     for (const [bridge, notes] of groups) {
-      if (notes.length === 0) {
-        groups.delete(bridge);
-      } else {
-        notes.sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)));
-      }
+      if (notes.length === 0) groups.delete(bridge);
     }
 
     // Build noteToBridges for topical sort
