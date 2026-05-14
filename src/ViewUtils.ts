@@ -142,7 +142,7 @@ function createFileItem(
         hoverParent: plugin, targetEl: li,
         linktext: file.basename, sourcePath: file.path,
       });
-    }, 2000);
+    }, 500);
   });
 
   li.addEventListener("mousemove", (e) => { lastEvent = e; });
@@ -190,7 +190,7 @@ export function renderNoteList(
           hoverParent: plugin, targetEl: li,
           linktext: file.basename, sourcePath: file.path,
         });
-      }, 2000);
+      }, 500);
     });
     li.addEventListener("mousemove", (e) => { lastEvent = e; });
     li.addEventListener("mouseleave", () => {
@@ -458,7 +458,7 @@ export function renderGroupedNoteList(
             hoverParent: plugin, targetEl: li,
             linktext: file.basename, sourcePath: file.path,
           });
-        }, 2000);
+        }, 500);
       });
       li.addEventListener("mousemove", (e) => { lastEvent = e; });
       li.addEventListener("mouseleave", () => {

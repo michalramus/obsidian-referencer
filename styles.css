@@ -29,9 +29,12 @@
   margin-bottom: 4px;
 }
 
-.referencer-group > div,
-.referencer-group > ul {
+.referencer-group > div {
   padding-left: 12px;
+}
+
+.referencer-group > ul {
+  padding-left: 20px;
 }
 
 .referencer-group:last-child {
