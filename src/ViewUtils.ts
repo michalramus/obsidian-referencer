@@ -19,6 +19,11 @@ let dragState: {
   sourceEl: HTMLElement;
 } | null = null;
 
+export interface FolderNode {
+  files: TFile[];
+  subfolders: Map<string, FolderNode>;
+}
+
 function applyOrder<T>(
   items: T[],
   savedOrder: string[],
@@ -181,78 +186,70 @@ export function renderNoteList(
   }
 }
 
-export function renderSubfolderGroupedList(
-  container: HTMLElement,
-  rootFiles: TFile[],
-  groups: Map<string, TFile[]>,
-  plugin: ReferencerPlugin
-): void {
-  container.empty();
-  if (rootFiles.length === 0 && groups.size === 0) {
-    container.createEl("p", { text: "No notes found.", cls: "referencer-empty" });
-    return;
+function applySubfolderOrder(names: string[], savedOrder: string[]): string[] {
+  if (savedOrder.length === 0) {
+    return [...names].sort((a, b) => stripLeadingEmoji(a).localeCompare(stripLeadingEmoji(b)));
   }
+  const indexMap = new Map(savedOrder.map((k, i) => [k, i]));
+  const known = names.filter((n) => indexMap.has(n));
+  const unknown = names.filter((n) => !indexMap.has(n));
+  known.sort((a, b) => indexMap.get(a)! - indexMap.get(b)!);
+  unknown.sort((a, b) => stripLeadingEmoji(a).localeCompare(stripLeadingEmoji(b)));
+  return [...known, ...unknown];
+}
 
+export function renderFolderTree(
+  container: HTMLElement,
+  node: FolderNode,
+  relPath: string,
+  plugin: ReferencerPlugin,
+  depth = 0
+): void {
   const s = plugin.settings;
   let needsSave = false;
 
-  const orderedEntries = s.alphabeticOrder
-    ? [...groups.entries()].sort(([a], [b]) =>
-        stripLeadingEmoji(a).localeCompare(stripLeadingEmoji(b))
-      )
-    : applyOrder([...groups.entries()], s.manualFolderOrder, ([k]) => k);
+  // Order subfolders
+  const subNames = [...node.subfolders.keys()];
+  const orderedSubNames = s.alphabeticOrder
+    ? [...subNames].sort((a, b) => stripLeadingEmoji(a).localeCompare(stripLeadingEmoji(b)))
+    : applySubfolderOrder(subNames, s.manualSubfolderOrder[relPath] ?? []);
 
-  // Sync folder order: trim stale entries and add new ones
+  // Sync manualSubfolderOrder for this level
   if (!s.alphabeticOrder) {
-    const currentKeys = orderedEntries.map(([k]) => k);
     const synced = [
-      ...s.manualFolderOrder.filter((k) => currentKeys.includes(k)),
-      ...currentKeys.filter((k) => !s.manualFolderOrder.includes(k)),
+      ...(s.manualSubfolderOrder[relPath] ?? []).filter((k) => subNames.includes(k)),
+      ...subNames.filter((k) => !(s.manualSubfolderOrder[relPath] ?? []).includes(k)),
     ];
-    if (synced.join() !== s.manualFolderOrder.join()) {
-      s.manualFolderOrder = synced;
+    if (synced.join() !== (s.manualSubfolderOrder[relPath] ?? []).join()) {
+      s.manualSubfolderOrder[relPath] = synced;
       needsSave = true;
     }
   }
 
-  for (const [sub, files] of orderedEntries) {
-    const orderedFiles = s.alphabeticOrder
-      ? files
-      : applyOrder(files, s.manualFileOrder[sub] ?? [], (f) => f.basename);
-
-    // Trim stale file entries for this group
-    if (!s.alphabeticOrder) {
-      const trimmed = orderedFiles.map((f) => f.basename);
-      const saved = s.manualFileOrder[sub] ?? [];
-      if (trimmed.join() !== saved.join()) {
-        s.manualFileOrder[sub] = trimmed;
-        needsSave = true;
-      }
-    }
+  // Render subfolders first
+  for (const seg of orderedSubNames) {
+    const childNode = node.subfolders.get(seg)!;
+    const childRelPath = relPath ? `${relPath}/${seg}` : seg;
 
     const details = container.createEl("details", { cls: "referencer-group" });
-    details.dataset.subfolder = sub;
-    const isCollapsed = s.collapsedFolders.includes(sub);
+    details.dataset.subfolder = childRelPath;
+    const isCollapsed = s.collapsedFolders.includes(childRelPath);
     if (!isCollapsed) details.setAttribute("open", "");
 
     details.addEventListener("toggle", () => {
       const collapsed = s.collapsedFolders;
       if (details.open) {
-        const idx = collapsed.indexOf(sub);
+        const idx = collapsed.indexOf(childRelPath);
         if (idx !== -1) collapsed.splice(idx, 1);
       } else {
-        if (!collapsed.includes(sub)) collapsed.push(sub);
+        if (!collapsed.includes(childRelPath)) collapsed.push(childRelPath);
       }
       plugin.saveSettings();
     });
 
     if (!s.alphabeticOrder) {
       details.addEventListener("dragover", (e) => {
-        if (
-          !dragState ||
-          dragState.type !== "folder" ||
-          dragState.sourceEl === details
-        )
+        if (!dragState || dragState.type !== "folder" || dragState.groupKey !== relPath || dragState.sourceEl === details)
           return;
         e.preventDefault();
         e.dataTransfer!.dropEffect = "move";
@@ -268,22 +265,17 @@ export function renderSubfolderGroupedList(
       details.addEventListener("drop", (e) => {
         e.preventDefault();
         details.classList.remove("referencer-drag-over");
-        if (
-          !dragState ||
-          dragState.type !== "folder" ||
-          dragState.sourceEl === details
-        )
+        if (!dragState || dragState.type !== "folder" || dragState.groupKey !== relPath || dragState.sourceEl === details)
           return;
-
-        const order = s.manualFolderOrder;
-        const fromKey = (dragState.sourceEl as HTMLElement).dataset.subfolder!;
-        const toKey = sub;
-        const fromIdx = order.indexOf(fromKey);
-        const toIdx = order.indexOf(toKey);
+        const fromSeg = (dragState.sourceEl as HTMLElement).dataset.subfolder!.split("/").pop()!;
+        const toSeg = seg;
+        const order = s.manualSubfolderOrder[relPath] ?? [];
+        const fromIdx = order.indexOf(fromSeg);
+        const toIdx = order.indexOf(toSeg);
         if (fromIdx === -1 || toIdx === -1) return;
-
         order.splice(fromIdx, 1);
-        order.splice(toIdx, 0, fromKey);
+        order.splice(toIdx, 0, fromSeg);
+        s.manualSubfolderOrder[relPath] = order;
         plugin.saveSettings().then(() => plugin.refreshFolderView());
       });
     }
@@ -295,7 +287,7 @@ export function renderSubfolderGroupedList(
       handle.textContent = "⠿";
 
       handle.addEventListener("dragstart", (e) => {
-        dragState = { type: "folder", groupKey: "", sourceEl: details };
+        dragState = { type: "folder", groupKey: relPath, sourceEl: details };
         details.classList.add("referencer-dragging");
         e.dataTransfer!.effectAllowed = "move";
         e.dataTransfer!.setDragImage(details, 0, 0);
@@ -304,8 +296,7 @@ export function renderSubfolderGroupedList(
 
       handle.addEventListener("dragend", () => {
         details.classList.remove("referencer-dragging");
-        container
-          .querySelectorAll(".referencer-drag-over")
+        container.querySelectorAll(".referencer-drag-over")
           .forEach((el) => el.classList.remove("referencer-drag-over"));
         dragState = null;
       });
@@ -313,20 +304,39 @@ export function renderSubfolderGroupedList(
       handle.draggable = true;
     }
 
-    summary.createEl("span", { text: sub });
+    summary.createEl("span", { text: seg });
 
-    const ul = details.createEl("ul", { cls: "referencer-list" });
-    for (const file of orderedFiles) {
-      ul.appendChild(createFileItem(file, sub, plugin));
+    const childContainer = details.createEl("div");
+
+    // Order and render files for this subfolder node
+    const orderedFiles = s.alphabeticOrder
+      ? [...childNode.files].sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)))
+      : applyOrder(childNode.files, s.manualFileOrder[childRelPath] ?? [], (f) => f.basename);
+
+    if (!s.alphabeticOrder) {
+      const trimmed = orderedFiles.map((f) => f.basename);
+      const saved = s.manualFileOrder[childRelPath] ?? [];
+      if (trimmed.join() !== saved.join()) {
+        s.manualFileOrder[childRelPath] = trimmed;
+        needsSave = true;
+      }
     }
+
+    const ul = childContainer.createEl("ul", { cls: "referencer-list" });
+    for (const file of orderedFiles) {
+      ul.appendChild(createFileItem(file, childRelPath, plugin));
+    }
+
+    // Recurse for nested subfolders
+    renderFolderTree(childContainer, childNode, childRelPath, plugin, depth + 1);
   }
 
-  if (rootFiles.length > 0) {
+  // Render files at current level (root files for relPath="", or files directly in this folder)
+  if (depth === 0 && node.files.length > 0) {
     const orderedRoot = s.alphabeticOrder
-      ? rootFiles
-      : applyOrder(rootFiles, s.manualFileOrder[""] ?? [], (f) => f.basename);
+      ? [...node.files].sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)))
+      : applyOrder(node.files, s.manualFileOrder[""] ?? [], (f) => f.basename);
 
-    // Trim stale root file entries
     if (!s.alphabeticOrder) {
       const trimmed = orderedRoot.map((f) => f.basename);
       const saved = s.manualFileOrder[""] ?? [];

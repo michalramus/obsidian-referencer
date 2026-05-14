@@ -1,8 +1,28 @@
 import { ItemView, setIcon, TFile, WorkspaceLeaf } from "obsidian";
 import type ReferencerPlugin from "./main";
-import { renderSubfolderGroupedList, stripLeadingEmoji } from "./ViewUtils";
+import { FolderNode, renderFolderTree, stripLeadingEmoji } from "./ViewUtils";
 
 export const FOLDER_VIEW_TYPE = "referencer-folder-view";
+
+function buildFolderTree(files: TFile[], folderNorm: string): FolderNode {
+  const root: FolderNode = { files: [], subfolders: new Map() };
+  for (const file of files) {
+    const rel = file.path.slice(folderNorm.length);
+    const parts = rel.split("/");
+    if (parts.length === 1) {
+      root.files.push(file);
+    } else {
+      let node = root;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const seg = parts[i];
+        if (!node.subfolders.has(seg)) node.subfolders.set(seg, { files: [], subfolders: new Map() });
+        node = node.subfolders.get(seg)!;
+      }
+      node.files.push(file);
+    }
+  }
+  return root;
+}
 
 export class FolderView extends ItemView {
   constructor(leaf: WorkspaceLeaf, private plugin: ReferencerPlugin) {
@@ -46,27 +66,17 @@ export class FolderView extends ItemView {
       .filter((f) => f.path.startsWith(folderNorm))
       .sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)));
 
-    const rootFiles: TFile[] = [];
-    const subfolderMap = new Map<string, TFile[]>();
-    for (const file of files) {
-      const rel = file.path.slice(folderNorm.length);
-      const slashIdx = rel.indexOf("/");
-      if (slashIdx === -1) {
-        rootFiles.push(file);
-      } else {
-        const sub = rel.slice(0, slashIdx);
-        if (!subfolderMap.has(sub)) subfolderMap.set(sub, []);
-        subfolderMap.get(sub)!.push(file);
-      }
-    }
+    const tree = buildFolderTree(files, folderNorm);
 
     if (!this.plugin.settings.alphabeticOrder) {
-      this.captureInitialOrderIfNeeded(rootFiles, subfolderMap);
+      const dirty = { v: false };
+      this.captureOrderForNode(tree, "", dirty);
+      if (dirty.v) this.plugin.saveSettings();
     }
 
     container.empty();
 
-    if (subfolderMap.size > 0) {
+    if (tree.subfolders.size > 0) {
       const toolbar = container.createEl("div", { cls: "referencer-toolbar" });
       const btn = toolbar.createEl("button", {
         cls: "referencer-toolbar-btn",
@@ -96,35 +106,37 @@ export class FolderView extends ItemView {
     }
 
     const listEl = container.createEl("div");
-    renderSubfolderGroupedList(listEl, rootFiles, subfolderMap, this.plugin);
+    renderFolderTree(listEl, tree, "", this.plugin);
   }
 
-  private captureInitialOrderIfNeeded(
-    rootFiles: TFile[],
-    subfolderMap: Map<string, TFile[]>
-  ): void {
+  private captureOrderForNode(node: FolderNode, relPath: string, dirty: { v: boolean }): void {
     const s = this.plugin.settings;
-    let dirty = false;
 
-    if (s.manualFolderOrder.length === 0 && subfolderMap.size > 0) {
-      s.manualFolderOrder = [...subfolderMap.keys()].sort((a, b) =>
-        stripLeadingEmoji(a).localeCompare(stripLeadingEmoji(b))
-      );
-      dirty = true;
+    if (!s.manualFileOrder[relPath] && node.files.length > 0) {
+      s.manualFileOrder[relPath] = [...node.files]
+        .sort((a, b) => stripLeadingEmoji(a.basename).localeCompare(stripLeadingEmoji(b.basename)))
+        .map((f) => f.basename);
+      dirty.v = true;
     }
 
-    for (const [sub, files] of subfolderMap) {
-      if (!s.manualFileOrder[sub]) {
-        s.manualFileOrder[sub] = files.map((f) => f.basename);
-        dirty = true;
-      }
+    const subNames = [...node.subfolders.keys()].sort((a, b) =>
+      stripLeadingEmoji(a).localeCompare(stripLeadingEmoji(b))
+    );
+
+    if (!s.manualSubfolderOrder[relPath] && subNames.length > 0) {
+      s.manualSubfolderOrder[relPath] = subNames;
+      dirty.v = true;
     }
 
-    if (!s.manualFileOrder[""] && rootFiles.length > 0) {
-      s.manualFileOrder[""] = rootFiles.map((f) => f.basename);
-      dirty = true;
+    // Also capture top-level folder order in manualFolderOrder for backward compat
+    if (relPath === "" && !s.manualFolderOrder.length && subNames.length > 0) {
+      s.manualFolderOrder = subNames;
+      dirty.v = true;
     }
 
-    if (dirty) this.plugin.saveSettings();
+    for (const [seg, child] of node.subfolders) {
+      const childPath = relPath ? `${relPath}/${seg}` : seg;
+      this.captureOrderForNode(child, childPath, dirty);
+    }
   }
 }
