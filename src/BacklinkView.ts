@@ -86,9 +86,10 @@ export class BacklinkView extends ItemView {
       return;
     }
 
-    // Pass 1: assign each sourcePath to best bridge (prefer outside-folder notes)
-    const assignment = new Map<string, { file: TFile; bridge: BridgeInfo; inFolder: boolean }>();
+    // Pass 1: assign each sourcePath to best bridge (prefer outside-folder bridges)
+    const assignment = new Map<string, { file: TFile; bridge: BridgeInfo; bridgeInFolder: boolean }>();
     for (const bridge of bridgeFiles) {
+      const bridgeInFolder = bridge.file?.path.startsWith(folderNorm) ?? false;
       let sourcePaths: string[];
       if (bridge.file !== null) {
         const backlinks = this.app.metadataCache.getBacklinksForFile(
@@ -104,10 +105,9 @@ export class BacklinkView extends ItemView {
         if (sourcePath === activeFile.path) continue;
         const sourceFile = this.app.vault.getFileByPath(sourcePath);
         if (!sourceFile) continue;
-        const inFolder = sourceFile.path.startsWith(folderNorm);
         const existing = assignment.get(sourcePath);
-        if (!existing || (existing.inFolder && !inFolder)) {
-          assignment.set(sourcePath, { file: sourceFile, bridge, inFolder });
+        if (!existing || (existing.bridgeInFolder && !bridgeInFolder)) {
+          assignment.set(sourcePath, { file: sourceFile, bridge, bridgeInFolder });
         }
       }
     }
