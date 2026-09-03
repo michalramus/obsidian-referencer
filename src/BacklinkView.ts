@@ -112,15 +112,32 @@ export class BacklinkView extends ItemView {
       }
     }
 
-    // Pass 1b: assign each source to best bridge (prefer outside-folder, then earliest in note)
+    // Pass 1b: assign each source to exactly one bridge, greedily filling the
+    // smallest group first so that as many groups as possible stay non-empty.
     const assignment = new Map<string, { file: TFile; bridge: BridgeInfo }>();
-    for (const [sourcePath, { file, bridges }] of sourceToBridges) {
-      const outsideBridges = bridges.filter(b => !(b.file?.path.startsWith(folderNorm) ?? false));
-      const candidates = outsideBridges.length > 0 ? outsideBridges : bridges;
-      const bestBridge = candidates.reduce((best, b) =>
-        bridgeFiles.indexOf(b) < bridgeFiles.indexOf(best) ? b : best
-      );
-      assignment.set(sourcePath, { file, bridge: bestBridge });
+    const pending = new Set(bridgeFiles);
+    while (pending.size > 0) {
+      let bestBridge: BridgeInfo | null = null;
+      let bestCandidates: string[] = [];
+      for (const bridge of bridgeFiles) {
+        if (!pending.has(bridge)) continue;
+        const candidates = [...sourceToBridges]
+          .filter(([sp, { bridges }]) => !assignment.has(sp) && bridges.includes(bridge))
+          .map(([sp]) => sp);
+        // Tie-break on bridge order in the current note.
+        if (candidates.length > 0 && (bestBridge === null || candidates.length < bestCandidates.length)) {
+          bestBridge = bridge;
+          bestCandidates = candidates;
+        }
+      }
+      if (bestBridge === null) break;
+      for (const sourcePath of bestCandidates) {
+        assignment.set(sourcePath, {
+          file: sourceToBridges.get(sourcePath)!.file,
+          bridge: bestBridge,
+        });
+      }
+      pending.delete(bestBridge);
     }
 
     // Pass 2: rebuild groups from assignments, preserve bridge order
