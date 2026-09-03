@@ -5,7 +5,7 @@ import { FolderView, FOLDER_VIEW_TYPE } from "./FolderView";
 import { BacklinkView, BACKLINK_VIEW_TYPE } from "./BacklinkView";
 
 export default class ReferencerPlugin extends Plugin {
-  settings: ReferencerSettings;
+  settings!: ReferencerSettings;
   lastMarkdownView: MarkdownView | null = null;
 
   async onload(): Promise<void> {

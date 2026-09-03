@@ -25,7 +25,7 @@ export interface FolderNode {
   subfolders: Map<string, FolderNode>;
 }
 
-function applyOrder<T>(
+function applyOrder<T>( // TODO 
   items: T[],
   savedOrder: string[],
   keyFn: (item: T) => string
@@ -46,6 +46,42 @@ function applyOrder<T>(
     stripLeadingEmoji(keyFn(a)).localeCompare(stripLeadingEmoji(keyFn(b)))
   );
   return [...known, ...unknown];
+}
+
+export function attachPreview(
+  el: HTMLElement,
+  plugin: ReferencerPlugin,
+  file: TFile
+): void {
+  let shown = false;
+
+  const show = (event: MouseEvent | KeyboardEvent): void => {
+    if (shown) return;
+    shown = true;
+    plugin.app.workspace.trigger("hover-link", {
+      event, source: "referencer",
+      hoverParent: plugin, targetEl: el,
+      linktext: file.basename, sourcePath: file.path,
+    });
+  };
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    if (e.ctrlKey || e.metaKey) show(e);
+  };
+
+  el.addEventListener("mouseenter", (e) => {
+    if (e.ctrlKey || e.metaKey) show(e);
+    document.addEventListener("keydown", onKeyDown);
+  });
+
+  el.addEventListener("mousemove", (e) => {
+    if (e.ctrlKey || e.metaKey) show(e);
+  });
+
+  el.addEventListener("mouseleave", () => {
+    shown = false;
+    document.removeEventListener("keydown", onKeyDown);
+  });
 }
 
 function createFileItem(
@@ -132,25 +168,7 @@ function createFileItem(
     insertWikilink(plugin, file.basename);
   });
 
-  let hoverTimer: ReturnType<typeof setTimeout> | null = null;
-  let lastEvent: MouseEvent | null = null;
-
-  li.addEventListener("mouseenter", (e) => {
-    lastEvent = e;
-    hoverTimer = setTimeout(() => {
-      plugin.app.workspace.trigger("hover-link", {
-        event: lastEvent!, source: "referencer",
-        hoverParent: plugin, targetEl: li,
-        linktext: file.basename, sourcePath: file.path,
-      });
-    }, 500);
-  });
-
-  li.addEventListener("mousemove", (e) => { lastEvent = e; });
-
-  li.addEventListener("mouseleave", () => {
-    if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-  });
+  attachPreview(li, plugin, file);
 
   li.addEventListener("contextmenu", (e) => {
     e.preventDefault();
@@ -181,22 +199,7 @@ export function renderNoteList(
     li.setText(file.basename);
     li.addEventListener("click", () => insertWikilink(plugin, file.basename));
 
-    let hoverTimer: ReturnType<typeof setTimeout> | null = null;
-    let lastEvent: MouseEvent | null = null;
-    li.addEventListener("mouseenter", (e) => {
-      lastEvent = e;
-      hoverTimer = setTimeout(() => {
-        plugin.app.workspace.trigger("hover-link", {
-          event: lastEvent!, source: "referencer",
-          hoverParent: plugin, targetEl: li,
-          linktext: file.basename, sourcePath: file.path,
-        });
-      }, 500);
-    });
-    li.addEventListener("mousemove", (e) => { lastEvent = e; });
-    li.addEventListener("mouseleave", () => {
-      if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-    });
+    attachPreview(li, plugin, file);
 
     li.addEventListener("contextmenu", (e) => {
       e.preventDefault();
@@ -385,27 +388,46 @@ function alphaSorted(notes: TFile[]): TFile[] {
   );
 }
 
+/**
+ * Topical sort: repeatedly split the notes by their most frequently shared
+ * outgoing link (notes having it first), then recurse into both halves with
+ * that link excluded. Leaves are sorted alphabetically.
+ */
 export function hierarchicalSort(
   notes: TFile[],
-  noteToBridges: Map<string, Set<string>>,
-  availableBridges: BridgeInfo[]
+  noteToLinks: Map<string, Set<string>>,
+  excluded: Set<string> = new Set()
 ): TFile[] {
-  if (notes.length <= 1 || availableBridges.length === 0) return alphaSorted(notes);
-  const freq = new Map(availableBridges.map(b => [b.path,
-    notes.filter(n => noteToBridges.get(n.path)?.has(b.path)).length
-  ]));
-  const maxFreq = Math.max(...freq.values());
-  if (maxFreq <= 1) return alphaSorted(notes);
-  const topBridge = availableBridges.reduce((a, b) =>
-    freq.get(b.path)! > freq.get(a.path)! ? b : a
-  );
-  const withBridge = notes.filter(n => noteToBridges.get(n.path)?.has(topBridge.path));
-  const withoutBridge = notes.filter(n => !noteToBridges.get(n.path)?.has(topBridge.path));
-  const remaining = availableBridges.filter(b => b.path !== topBridge.path);
-  if (maxFreq <= 2) return [...alphaSorted(withBridge), ...alphaSorted(withoutBridge)];
+  if (notes.length <= 1) return alphaSorted(notes);
+
+  const freq = new Map<string, number>();
+  for (const note of notes) {
+    for (const link of noteToLinks.get(note.path) ?? []) {
+      if (excluded.has(link)) continue;
+      freq.set(link, (freq.get(link) ?? 0) + 1);
+    }
+  }
+
+  let topLink: string | null = null;
+  let topCount = 1;
+  for (const [link, count] of freq) {
+    // A link every note has cannot split the group.
+    if (count === notes.length) continue;
+    // Tie-break on the link path so the order is deterministic.
+    if (count > topCount || (count === topCount && topLink !== null && link < topLink)) {
+      topLink = link;
+      topCount = count;
+    }
+  }
+  // Nothing shared by at least two notes -> nothing left to group on.
+  if (topLink === null) return alphaSorted(notes);
+
+  const withLink = notes.filter((n) => noteToLinks.get(n.path)?.has(topLink!));
+  const withoutLink = notes.filter((n) => !noteToLinks.get(n.path)?.has(topLink!));
+  const nextExcluded = new Set(excluded).add(topLink);
   return [
-    ...hierarchicalSort(withBridge, noteToBridges, remaining),
-    ...hierarchicalSort(withoutBridge, noteToBridges, remaining),
+    ...hierarchicalSort(withLink, noteToLinks, nextExcluded),
+    ...hierarchicalSort(withoutLink, noteToLinks, nextExcluded),
   ];
 }
 
@@ -413,8 +435,7 @@ export function renderGroupedNoteList(
   container: HTMLElement,
   groups: Map<BridgeInfo, TFile[]>,
   plugin: ReferencerPlugin,
-  noteToBridges: Map<string, Set<string>> = new Map(),
-  bridgeFiles: BridgeInfo[] = []
+  noteToLinks: Map<string, Set<string>> = new Map()
 ): void {
   container.empty();
   if (groups.size === 0) {
@@ -422,11 +443,8 @@ export function renderGroupedNoteList(
     return;
   }
   for (const [bridge, notes] of groups) {
-    const sortedNotes = hierarchicalSort(
-      notes,
-      noteToBridges,
-      bridgeFiles.filter(b => b.path !== bridge.path)
-    );
+    // The group's own bridge is shared by every note here, so it cannot split them.
+    const sortedNotes = hierarchicalSort(notes, noteToLinks, new Set([bridge.path]));
     const details = container.createEl("details", { cls: "referencer-group" });
     const key = bridge.path;
     const isCollapsed = plugin.settings.collapsedGroups.includes(key);
@@ -449,22 +467,7 @@ export function renderGroupedNoteList(
       li.setText(file.basename);
       li.addEventListener("click", () => insertWikilink(plugin, file.basename));
 
-      let hoverTimer: ReturnType<typeof setTimeout> | null = null;
-      let lastEvent: MouseEvent | null = null;
-      li.addEventListener("mouseenter", (e) => {
-        lastEvent = e;
-        hoverTimer = setTimeout(() => {
-          plugin.app.workspace.trigger("hover-link", {
-            event: lastEvent!, source: "referencer",
-            hoverParent: plugin, targetEl: li,
-            linktext: file.basename, sourcePath: file.path,
-          });
-        }, 500);
-      });
-      li.addEventListener("mousemove", (e) => { lastEvent = e; });
-      li.addEventListener("mouseleave", () => {
-        if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null; }
-      });
+      attachPreview(li, plugin, file);
 
       li.addEventListener("contextmenu", (e) => {
         e.preventDefault();

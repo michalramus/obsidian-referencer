@@ -59,6 +59,7 @@ export class BacklinkView extends ItemView {
     const filterByFolder = this.plugin.settings.filterBacklinksByFolder;
     const bridgeFiles: BridgeInfo[] = [];
     const seenBridges = new Set<string>();
+    
     for (const linkCache of outLinks) {
       const resolved = this.app.metadataCache.getFirstLinkpathDest(
         linkCache.link,
@@ -91,9 +92,9 @@ export class BacklinkView extends ItemView {
     for (const bridge of bridgeFiles) {
       let sourcePaths: string[];
       if (bridge.file !== null) {
-        const backlinks = this.app.metadataCache.getBacklinksForFile(
+        const backlinks = (this.app.metadataCache as any).getBacklinksForFile(
           bridge.file
-        ) as unknown as CustomArrayDict;
+        ) as CustomArrayDict;
         sourcePaths = backlinks.keys();
       } else {
         sourcePaths = Object.entries(this.app.metadataCache.unresolvedLinks)
@@ -135,24 +136,19 @@ export class BacklinkView extends ItemView {
       if (notes.length === 0) groups.delete(bridge);
     }
 
-    // Build noteToBridges for topical sort
+    // Build the outgoing-link set of every panel note, for the topical sort.
     const allPanelNotes = [...new Set([...assignment.values()].map(a => a.file))];
-    const noteToBridges = new Map<string, Set<string>>();
+    const noteToLinks = new Map<string, Set<string>>();
     for (const note of allPanelNotes) {
-      const bridges = new Set<string>();
+      const links = new Set<string>();
       const noteCache = this.app.metadataCache.getFileCache(note);
       for (const lc of noteCache?.links ?? []) {
         const resolved = this.app.metadataCache.getFirstLinkpathDest(lc.link, note.path);
-        if (resolved && bridgeFiles.some(b => b.path === resolved.path)) bridges.add(resolved.path);
+        links.add(resolved ? resolved.path : `[[${lc.link}]]`);
       }
-      const noteUnresolved = this.app.metadataCache.unresolvedLinks[note.path] ?? {};
-      for (const linkText of Object.keys(noteUnresolved)) {
-        const synPath = `[[${linkText}]]`;
-        if (bridgeFiles.some(b => b.path === synPath)) bridges.add(synPath);
-      }
-      noteToBridges.set(note.path, bridges);
+      noteToLinks.set(note.path, links);
     }
 
-    renderGroupedNoteList(container, groups, this.plugin, noteToBridges, bridgeFiles);
+    renderGroupedNoteList(container, groups, this.plugin, noteToLinks);
   }
 }
